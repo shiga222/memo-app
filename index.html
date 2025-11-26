@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>複数メモ帳（スマホ対応・削除つき）</title>
+  <title>写真つき複数メモ帳</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -19,16 +19,16 @@
       padding: 12px;
     }
 
-    h1 { text-align: center; font-size: 22px; }
+    h1 { text-align: center; font-size: 22px; margin: 10px 0 16px; }
     h2 { font-size: 18px; margin-top: 16px; }
 
     .list {
+      margin-top: 6px;
       margin-bottom: 12px;
       max-height: 240px;
       overflow-y: auto;
     }
 
-    /* ★ 一つのメモ表示＋削除ボタンのレイアウト */
     .memo-item {
       background: #fff;
       padding: 12px;
@@ -46,6 +46,13 @@
       cursor: pointer;
     }
 
+    .thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      object-fit: cover;
+    }
+
     .delete-btn {
       background: #ff5252;
       color: #fff;
@@ -54,6 +61,7 @@
       padding: 6px 10px;
       font-size: 13px;
       cursor: pointer;
+      margin-left: 4px;
     }
 
     input, textarea {
@@ -88,19 +96,86 @@
     .secondary { background: #607d8b; }
 
     .status { margin-top: 6px; font-size: 12px; color: #444; }
+
+    .search-label { font-size: 14px; margin-top: 4px; }
+
+    .image-area {
+      margin-top: 10px;
+      background: #fff;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    .image-preview {
+      margin-top: 6px;
+      max-width: 100%;
+      max-height: 200px;
+      border-radius: 8px;
+      object-fit: contain;
+      display: none;
+    }
+
+    .image-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .image-note {
+      font-size: 11px;
+      color: #777;
+      margin-top: 4px;
+    }
+
+    .small-btn {
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 999px;
+      border: none;
+      background: #2196f3;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .small-btn.secondary {
+      background: #9e9e9e;
+    }
   </style>
 </head>
 
 <body>
 <div class="container">
-  <h1>複数メモ帳</h1>
+  <h1>写真つき複数メモ帳</h1>
 
   <h2>メモ一覧</h2>
+
+  <!-- 🔍 検索ボックス -->
+  <div class="search-label">検索（タイトル・1行目）</div>
+  <input id="search" placeholder="キーワードを入力">
+
   <div class="list" id="memoList"></div>
 
   <h2>メモを作る / 編集する</h2>
   <input id="title" placeholder="タイトル">
   <textarea id="text" placeholder="内容"></textarea>
+
+  <!-- 📷 写真エリア -->
+  <div class="image-area">
+    <div style="font-size:14px;">写真</div>
+    <input type="file" id="imageInput" accept="image/*">
+
+    <div class="image-buttons">
+      <button type="button" id="clearImage" class="small-btn secondary">画像を削除</button>
+    </div>
+
+    <img id="imagePreview" class="image-preview" alt="画像プレビュー">
+
+    <div class="image-note">
+      ※ 画像はこの端末のブラウザにだけ保存されるよ（サーバーには送られない）。  
+      大きすぎる画像は保存できないことがあるから注意。
+    </div>
+  </div>
 
   <div class="buttons">
     <button id="save">このメモを保存</button>
@@ -111,47 +186,89 @@
 </div>
 
 <script>
-  const KEY = "multi_memo_data";
+  const KEY = "multi_memo_data_with_image";
   let memos = JSON.parse(localStorage.getItem(KEY)) || [];
   let currentIndex = null;
+  let searchQuery = "";
+  let currentImageDataUrl = null; // 今編集してるメモの画像データ
 
   const memoList = document.getElementById("memoList");
   const titleInput = document.getElementById("title");
   const textInput = document.getElementById("text");
   const status = document.getElementById("status");
+  const searchInput = document.getElementById("search");
+  const imageInput = document.getElementById("imageInput");
+  const imagePreview = document.getElementById("imagePreview");
+  const clearImageButton = document.getElementById("clearImage");
 
   function render() {
     memoList.innerHTML = "";
 
-    memos.forEach((m, i) => {
+    const q = searchQuery.trim().toLowerCase();
+
+    const filtered = memos.filter(m => {
+      if (!q) return true;
+      const title = (m.title || "").toLowerCase();
+      const firstLine = (m.text || "").split("\n")[0].toLowerCase();
+      return title.includes(q) || firstLine.includes(q);
+    });
+
+    filtered.forEach(m => {
+      const realIndex = memos.indexOf(m);
+
       const item = document.createElement("div");
       item.className = "memo-item";
 
       const textDiv = document.createElement("div");
       textDiv.className = "memo-text";
-      textDiv.innerHTML = `<strong>${m.title || '(無題)'}</strong><br>
-                          <span style="font-size:12px;color:#666">${(m.text || '').split("\n")[0]}</span>`;
-      textDiv.onclick = () => loadMemo(i);
+      textDiv.innerHTML = `
+        <strong>${m.title || "(無題)"}</strong><br>
+        <span style="font-size:12px;color:#666">
+          ${(m.text || "").split("\n")[0]}
+        </span>
+      `;
+      textDiv.onclick = () => loadMemo(realIndex);
+
+      item.appendChild(textDiv);
+
+      // サムネイル画像
+      if (m.image) {
+        const img = document.createElement("img");
+        img.src = m.image;
+        img.className = "thumb";
+        img.onclick = () => loadMemo(realIndex);
+        item.appendChild(img);
+      }
 
       const del = document.createElement("button");
       del.className = "delete-btn";
       del.textContent = "削除";
       del.onclick = (e) => {
-        e.stopPropagation(); // メモ読み込みと削除が同時に動くのを防ぐ
-        deleteMemo(i);
+        e.stopPropagation();
+        deleteMemo(realIndex);
       };
-
-      item.appendChild(textDiv);
       item.appendChild(del);
 
       memoList.appendChild(item);
     });
+
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.style.fontSize = "13px";
+      empty.style.color = "#777";
+      empty.style.marginTop = "6px";
+      empty.textContent = q ? "一致するメモがありません。" : "まだメモがありません。";
+      memoList.appendChild(empty);
+    }
   }
 
   function loadMemo(i) {
     currentIndex = i;
-    titleInput.value = memos[i].title;
-    textInput.value = memos[i].text;
+    const m = memos[i];
+    titleInput.value = m.title || "";
+    textInput.value = m.text || "";
+    currentImageDataUrl = m.image || null;
+    updateImagePreview();
     status.textContent = "メモを読み込みました";
   }
 
@@ -163,12 +280,57 @@
     currentIndex = null;
     titleInput.value = "";
     textInput.value = "";
+    currentImageDataUrl = null;
+    updateImagePreview();
     status.textContent = "メモを削除しました";
     render();
   }
 
+  function updateImagePreview() {
+    if (currentImageDataUrl) {
+      imagePreview.src = currentImageDataUrl;
+      imagePreview.style.display = "block";
+    } else {
+      imagePreview.src = "";
+      imagePreview.style.display = "none";
+    }
+  }
+
+  // 画像ファイルが選ばれたとき
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files[0];
+    if (!file) return;
+
+    // 大きすぎる画像は弾く（例: 1.5MB以上）
+    const maxSize = 1.5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert("画像が大きすぎるかも…もう少し小さい写真で試してみて！");
+      imageInput.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentImageDataUrl = e.target.result;
+      updateImagePreview();
+      status.textContent = "画像を読み込みました";
+    };
+    reader.readAsDataURL(file);
+  });
+
+  clearImageButton.addEventListener("click", () => {
+    currentImageDataUrl = null;
+    updateImagePreview();
+    imageInput.value = "";
+    status.textContent = "画像を削除しました（メモを保存すると反映されるよ）";
+  });
+
   document.getElementById("save").onclick = () => {
-    const data = { title: titleInput.value, text: textInput.value };
+    const data = {
+      title: titleInput.value,
+      text: textInput.value,
+      image: currentImageDataUrl || null
+    };
 
     if (currentIndex === null) {
       memos.push(data);
@@ -177,8 +339,13 @@
       memos[currentIndex] = data;
     }
 
-    localStorage.setItem(KEY, JSON.stringify(memos));
-    status.textContent = "保存しました！";
+    try {
+      localStorage.setItem(KEY, JSON.stringify(memos));
+      status.textContent = "保存しました！";
+    } catch (e) {
+      status.textContent = "保存に失敗したかも…画像が多すぎる/大きすぎる可能性あり。";
+    }
+
     render();
   };
 
@@ -186,8 +353,16 @@
     currentIndex = null;
     titleInput.value = "";
     textInput.value = "";
+    currentImageDataUrl = null;
+    imageInput.value = "";
+    updateImagePreview();
     status.textContent = "新しいメモ作成中…";
   };
+
+  searchInput.addEventListener("input", () => {
+    searchQuery = searchInput.value;
+    render();
+  });
 
   render();
 </script>
