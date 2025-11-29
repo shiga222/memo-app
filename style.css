@@ -1,7 +1,7 @@
 /* 全体（背景写真をここに設定） */
 body {
   margin: 0;
-  background: url("background.jpg") center/cover no-repeat; /* ←背景写真をここに置く */
+  background: url("背景.jpg") center/cover no-repeat; /* ←背景写真をここに置く */
   color: #1e293b;
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -109,5 +109,5 @@ h1 {
 }
 
 body {
-  background-image: url('background.jpg');
+  background-image: url('背景.jpg');
 }
